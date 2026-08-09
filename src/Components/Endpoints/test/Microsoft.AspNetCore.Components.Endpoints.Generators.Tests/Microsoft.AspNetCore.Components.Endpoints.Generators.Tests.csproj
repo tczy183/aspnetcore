@@ -30,7 +30,11 @@
   </ItemGroup>
 
   <Target Name="RunTests">
-    <Exec Command="dotnet exec &quot;$(TargetPath)&quot; $(TestRunnerAdditionalArguments)" />
+    <PropertyGroup>
+      <_MtpTestRunnerAdditionalArguments Condition="'$(RunQuarantinedTests)' != 'true'">--filter-not-trait &quot;Quarantined=true&quot; --no-ansi</_MtpTestRunnerAdditionalArguments>
+      <_MtpTestRunnerAdditionalArguments Condition="'$(RunQuarantinedTests)' == 'true'">--filter-trait &quot;Quarantined=true&quot; --no-ansi --ignore-exit-code 8</_MtpTestRunnerAdditionalArguments>
+    </PropertyGroup>
+    <Exec Command="dotnet exec &quot;$(TargetPath)&quot; $(_MtpTestRunnerAdditionalArguments)" />
   </Target>
 
 </Project>
