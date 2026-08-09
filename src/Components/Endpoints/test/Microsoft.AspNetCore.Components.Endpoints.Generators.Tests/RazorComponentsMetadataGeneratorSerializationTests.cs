@@ -35,7 +35,7 @@ public class RazorComponentsMetadataGeneratorSerializationTests : RazorComponent
         var context = LoadContext(result, out var loaded);
         using (loaded)
         {
-            var parameter = Assert.Single(Assert.Single(context.Components).Parameters);
+            var parameter = Assert.Single(Assert.Single(GetReferencedComponents(context, result)).Parameters);
             Assert.NotNull(parameter.GetStateSerializer);
 
             var marker = new object();
@@ -73,7 +73,7 @@ public class RazorComponentsMetadataGeneratorSerializationTests : RazorComponent
         using (loaded)
         {
             Assert.IsType<DefaultJsonTypeInfoResolver>(context.JsonTypeInfoResolver);
-            Assert.Single(context.Components);
+            Assert.Single(GetReferencedComponents(context, result));
         }
     }
 

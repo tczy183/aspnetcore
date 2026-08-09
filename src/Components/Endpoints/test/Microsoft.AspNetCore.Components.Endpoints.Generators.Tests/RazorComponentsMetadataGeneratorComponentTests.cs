@@ -11,6 +11,75 @@ namespace Microsoft.AspNetCore.Components.Endpoints.Generators.Tests;
 public class RazorComponentsMetadataGeneratorComponentTests : RazorComponentsMetadataGeneratorTestBase
 {
     [Fact]
+    public void ExplicitClosedGenericComponent_EmitsDescriptor()
+    {
+        var result = RunGenerator(
+            "namespace TestComponents;",
+            """
+            namespace TestHost;
+
+            [Microsoft.AspNetCore.Components.Web.ComponentTypeInfo(
+                typeof(Microsoft.AspNetCore.Components.CascadingValue<string>))]
+            public sealed partial class TestMetadata : Microsoft.AspNetCore.Components.Web.RazorComponentsMetadataContext
+            {
+            }
+            """);
+
+        var source = GetGeneratedSource(result);
+        Assert.Contains("typeof(global::Microsoft.AspNetCore.Components.CascadingValue<string>)", source);
+    }
+
+    [Fact]
+    public void ExplicitKnownGenericComponent_EmitsBuiltInFactoryCall()
+    {
+        var result = RunGenerator(
+            "namespace TestComponents;",
+            """
+            namespace TestHost;
+
+            [Microsoft.AspNetCore.Components.Web.ComponentTypeInfo(
+                typeof(Microsoft.AspNetCore.Components.Forms.ValidationMessage<string>))]
+            public sealed partial class TestMetadata : Microsoft.AspNetCore.Components.Web.RazorComponentsMetadataContext
+            {
+            }
+            """);
+
+        var source = GetGeneratedSource(result);
+        Assert.Matches(@"GetBuiltInComponentDescriptorFactory_\d+<string>\(null\)", source);
+        Assert.Contains("Name = \"CreateValidationMessageDescriptors\"", source);
+        Assert.Contains(
+            "UnsafeAccessorType(\"Microsoft.AspNetCore.Components.Infrastructure.BuiltInComponentDescriptors, Microsoft.AspNetCore.Components.Web\")",
+            source);
+    }
+
+    [Fact]
+    public void ReferencedFrameworkComponents_IncludeFullyDescribableComponents()
+    {
+        var result = RunGenerator("namespace TestComponents;");
+
+        var source = GetGeneratedSource(result);
+        Assert.Contains("typeof(global::Microsoft.AspNetCore.Components.Web.HeadOutlet)", source);
+        Assert.Contains("typeof(global::Microsoft.AspNetCore.Components.Sections.SectionOutlet)", source);
+        Assert.Contains("typeof(global::Microsoft.AspNetCore.Components.ResourcePreloader)", source);
+        Assert.Contains("UnsafeAccessorType(\"Microsoft.AspNetCore.Components.Infrastructure.BuiltInComponentDescriptors, Microsoft.AspNetCore.Components\")", source);
+    }
+
+    [Theory]
+    [InlineData("Microsoft.AspNetCore.Components.Endpoints")]
+    [InlineData("Microsoft.AspNetCore.Components.Forms")]
+    public void ReferencedKnownFrameworkAssembly_EmitsProviderAccessor(string assemblyName)
+    {
+        var result = RunGenerator(
+            "namespace TestComponents;",
+            referencedAssemblyName: assemblyName);
+
+        var source = GetGeneratedSource(result);
+        Assert.Contains(
+            $"UnsafeAccessorType(\"Microsoft.AspNetCore.Components.Infrastructure.BuiltInComponentDescriptors, {assemblyName}\")",
+            source);
+    }
+
+    [Fact]
     public void DynamicallyAccessedMembersParameter_EmitsSuppressedGeneratedBridge()
     {
         var result = RunGenerator("""
@@ -51,7 +120,7 @@ public class RazorComponentsMetadataGeneratorComponentTests : RazorComponentsMet
         var context = LoadContext(result, out var loaded);
         using (loaded)
         {
-            var component = Assert.Single(context.Components);
+            var component = Assert.Single(GetReferencedComponents(context, result));
             Assert.Equal("TestComponents.Greeting", component.Type.FullName);
             var instance = component.CreateInstance!(new EmptyServiceProvider());
             Assert.Equal(component.Type, instance.GetType());
@@ -80,7 +149,7 @@ public class RazorComponentsMetadataGeneratorComponentTests : RazorComponentsMet
         var context = LoadContext(result, out var loaded);
         using (loaded)
         {
-            var descriptor = Assert.Single(context.Components);
+            var descriptor = Assert.Single(GetReferencedComponents(context, result));
             Assert.Equal("TestComponents.NeedsArgument", descriptor.Type.FullName);
             Assert.Null(descriptor.CreateInstance);
         }
@@ -144,7 +213,7 @@ public class RazorComponentsMetadataGeneratorComponentTests : RazorComponentsMet
         var context = LoadContext(result, out var loaded);
         using (loaded)
         {
-            var descriptor = Assert.Single(context.Components);
+            var descriptor = Assert.Single(GetReferencedComponents(context, result));
             var instance = descriptor.CreateInstance!(new EmptyServiceProvider());
             var publicInjection = Assert.Single(descriptor.Injectables, item => item.Name == "PublicService");
             var keyedInjection = Assert.Single(descriptor.Injectables, item => item.Name == "KeyedService");
@@ -228,7 +297,7 @@ public class RazorComponentsMetadataGeneratorComponentTests : RazorComponentsMet
         var context = LoadContext(result, out var loaded);
         using (loaded)
         {
-            var descriptor = Assert.Single(context.Components);
+            var descriptor = Assert.Single(GetReferencedComponents(context, result));
             Assert.Equal(3, descriptor.Parameters.Count);
             var theme = Assert.Single(descriptor.Parameters, item => item.Name == "Theme");
             var themeAttribute = Assert.IsType<CascadingParameterAttribute>(theme.Attribute);
@@ -461,13 +530,13 @@ public class RazorComponentsMetadataGeneratorComponentTests : RazorComponentsMet
 
         Assert.Equal(
             ["TestHost.Container.NestedMetadata.Metadata.g.cs", "TestHost.FirstMetadata.Metadata.g.cs", "TestHost.SecondMetadata.Metadata.g.cs"],
-            result.GeneratedSources.Select(source => source.HintName).OrderBy(name => name));
-        Assert.All(result.GeneratedSources, source =>
+            result.MetadataGeneratedSources.Select(source => source.HintName).OrderBy(name => name));
+        Assert.All(result.MetadataGeneratedSources, source =>
         {
             var text = source.SourceText.ToString();
             Assert.Equal(1, text.Split("typeof(global::TestComponents.OneComponent)").Length - 1);
         });
-        Assert.Contains("partial record Container", result.GeneratedSources.Single(source => source.HintName.Contains("NestedMetadata")).SourceText.ToString());
+        Assert.Contains("partial record Container", result.MetadataGeneratedSources.Single(source => source.HintName.Contains("NestedMetadata")).SourceText.ToString());
     }
 
     [Fact]
@@ -510,8 +579,8 @@ public class RazorComponentsMetadataGeneratorComponentTests : RazorComponentsMet
             }
             """);
 
-        Assert.Equal(4, result.GeneratedSources.Length);
-        var source = string.Join(Environment.NewLine, result.GeneratedSources.Select(item => item.SourceText.ToString()));
+        Assert.Equal(4, result.MetadataGeneratedSources.Length);
+        var source = string.Join(Environment.NewLine, result.MetadataGeneratedSources.Select(item => item.SourceText.ToString()));
         Assert.Contains("partial class GenericContainer<T>", source);
         Assert.Contains("where T : class, new()", source);
         Assert.Contains("partial struct StructContainer", source);
@@ -545,7 +614,7 @@ public class RazorComponentsMetadataGeneratorComponentTests : RazorComponentsMet
 
         Assert.Equal(
             ["TestHost.Container_1.Metadata.Metadata.g.cs", "TestHost.Container.Metadata.Metadata.g.cs"],
-            result.GeneratedSources.Select(source => source.HintName).OrderBy(name => name));
+            result.MetadataGeneratedSources.Select(source => source.HintName).OrderBy(name => name));
     }
 
     private sealed class EmptyServiceProvider : IServiceProvider
