@@ -10,6 +10,7 @@
 // not exist in the compilation of the project that declares the .razor files, but they do exist in its
 // references.
 
+using System.Diagnostics.CodeAnalysis;
 using BlazorServerAotSample;
 using BlazorServerAotSample.Pages;
 using Microsoft.AspNetCore.Builder;
@@ -21,11 +22,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Components.Testing.NativeAot.Generated;
 #endif
 
-#if NATIVE_TESTING
 var builder = WebApplication.CreateSlimBuilder(args);
-#else
-var builder = WebApplication.CreateBuilder(args);
-#endif
+
+// CreateSlimBuilder wires Kestrel core, the sockets transport and routing, but - unlike the non-slim
+// builder - it does not load the static web assets manifest. Blazor Server serves
+// _framework/blazor.web.js as a static web asset, so the manifest is loaded explicitly.
+builder.WebHost.UseStaticWebAssets();
 
 if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_URLS")))
 {
@@ -55,6 +57,12 @@ app.MapRazorComponents<App>()
 
 await app.RunAsync();
 
+// AddRazorComponents and AddInteractiveServerComponents keep their [RequiresUnreferencedCode] gates:
+// they correctly warn an application that has not described its components. This one has, so the
+// warning is suppressed at the call site rather than by de-annotating the framework.
+[UnconditionalSuppressMessage("Trimming", "IL2026",
+    Justification = "Every path this application exercises is covered by the descriptors in " +
+        "SampleMetadata, which replace the reflection fallbacks these gates warn about.")]
 static void AddInteractiveServerBlazor(IServiceCollection services)
 {
     services.AddComponentMetadata<SampleMetadata>();
@@ -65,6 +73,8 @@ static void AddInteractiveServerBlazor(IServiceCollection services)
         });
 }
 
+[UnconditionalSuppressMessage("Trimming", "IL2026",
+    Justification = "This sample only stores generated-contract values through the session-backed component state feature.")]
 static void AddSessionSupport(IServiceCollection services)
 {
     services.AddDistributedMemoryCache();

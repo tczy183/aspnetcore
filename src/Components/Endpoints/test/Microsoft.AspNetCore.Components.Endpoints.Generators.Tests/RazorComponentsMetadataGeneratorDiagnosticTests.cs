@@ -8,8 +8,12 @@ namespace Microsoft.AspNetCore.Components.Endpoints.Generators.Tests;
 
 public class RazorComponentsMetadataGeneratorDiagnosticTests : RazorComponentsMetadataGeneratorTestBase
 {
-    [Fact]
-    public void BlazorAot001_IncompleteParameter_ReportsWarning()
+    [Theory]
+    [InlineData(null, DiagnosticSeverity.Warning)]
+    [InlineData(false, DiagnosticSeverity.Error)]
+    public void BlazorAot001_IncompleteParameter_SeverityFollowsReflectionMode(
+        bool? reflectionEnabledByDefault,
+        DiagnosticSeverity expectedSeverity)
     {
         var result = RunGenerator("""
             namespace TestComponents;
@@ -20,9 +24,10 @@ public class RazorComponentsMetadataGeneratorDiagnosticTests : RazorComponentsMe
                 private int ReadOnly { get; } = 1;
             }
             """,
+            razorComponentsReflectionEnabledByDefault: reflectionEnabledByDefault,
             expectedDiagnosticIds: ["BLAZORAOT001"]);
 
-        var diagnostic = AssertDiagnostic(result, "BLAZORAOT001", DiagnosticSeverity.Warning);
+        var diagnostic = AssertDiagnostic(result, "BLAZORAOT001", expectedSeverity);
         Assert.Contains("TestComponents.BrokenComponent", diagnostic.GetMessage(CultureInfo.InvariantCulture));
         Assert.Contains("missing a getter or a setter", diagnostic.GetMessage(CultureInfo.InvariantCulture));
 
@@ -135,8 +140,13 @@ public class RazorComponentsMetadataGeneratorDiagnosticTests : RazorComponentsMe
         }
     }
 
-    [Fact]
-    public void BlazorAot004_PartialAssembly_ReportsWarning()
+    [Theory]
+    [InlineData(null, DiagnosticSeverity.Warning)]
+    [InlineData(true, DiagnosticSeverity.Warning)]
+    [InlineData(false, DiagnosticSeverity.Error)]
+    public void BlazorAot004_PartialAssembly_SeverityFollowsReflectionMode(
+        bool? reflectionEnabledByDefault,
+        DiagnosticSeverity expectedSeverity)
     {
         var result = RunGenerator("""
             namespace TestComponents;
@@ -158,9 +168,10 @@ public class RazorComponentsMetadataGeneratorDiagnosticTests : RazorComponentsMe
                 }
             }
             """,
+            razorComponentsReflectionEnabledByDefault: reflectionEnabledByDefault,
             expectedDiagnosticIds: ["BLAZORAOT004"]);
 
-        AssertDiagnostic(result, "BLAZORAOT004", DiagnosticSeverity.Warning);
+        AssertDiagnostic(result, "BLAZORAOT004", expectedSeverity);
         Assert.Contains("ValidComponent", GetGeneratedSource(result));
         Assert.DoesNotContain("OmittedComponent", GetGeneratedSource(result));
     }
